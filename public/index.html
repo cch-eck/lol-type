@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>LoL 챔피언 숙련도 검색</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background-color: #1e1e2f;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding-top: 100px;
+    }
+
+    h1 {
+      font-size: 32px;
+      text-align: center;
+      color: white;
+      text-shadow: 0 0 10px #007bff;
+      margin-bottom: 40px;
+    }
+
+    .search-container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #searchButton {
+      background-color: #007bff;
+      color: white;
+      font-size: 20px;
+      width: 64px;
+      height: 64px;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.4s ease;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    #searchButton.hidden {
+      display: none;
+    }
+
+    #summonerInput {
+      width: 0;
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 50px;
+      transition: width 0.4s ease, opacity 0.4s ease;
+      opacity: 0;
+      outline: none;
+    }
+
+    #summonerInput.expanded {
+      width: 100%;
+      opacity: 1;
+      background-color: #fff;
+      color: #000;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+
+    #result {
+      width: 100%;
+      padding: 50px 50px;
+    }
+
+    #rank {
+      font-size: 20px;
+      margin-bottom: 30px;
+    }
+
+    .champion-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .champion-img {
+      width: 64px;
+      height: 64px;
+      border-radius: 8px;
+      margin-right: 15px;
+      flex-shrink: 0;
+    }
+
+    .bar-container {
+      flex-grow: 1;
+      background-color: #e0e0e0;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+      height: 30px;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background-color: #007bff;
+      width: 0;
+      border-radius: 8px;
+      transition: width 0.5s ease-out;
+    }
+
+    .points {
+      margin-left: 15px;
+      font-weight: bold;
+      min-width: 100px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>LoL 챔피언 숙련도 검색</h1>
+  <h4 id="kr-warning" style="display: none; color: white; font-weight: normal;">
+  ⚠️ KR 서버 유저만 검색 가능합니다
+  </h4>
+  <div class="search-container">
+    <button id="searchButton" onclick="expandSearch()">🔍</button>
+    <input type="text" id="summonerInput" placeholder="Hide on bush#KR1" onkeydown="if(event.key==='Enter') fetchStats()">
+  </div>
+
+  <div id="result">
+    <h2 id="rank"></h2>
+    <div id="mastery"></div>
+  </div>
+
+  <script>
+    function expandSearch() {
+    const input = document.getElementById('summonerInput');
+    input.classList.add('expanded');
+    input.focus();
+    document.getElementById('searchButton').classList.add('hidden');
+
+    // Show warning
+    document.getElementById('kr-warning').style.display = 'block';
+    }
+
+
+    async function fetchStats() {
+      const input = document.getElementById('summonerInput').value.trim();
+      const [name, tag] = input.split('#');
+      if (!name || !tag) {
+        alert('소환사 이름과 태그를 모두 입력하세요 (예: Hide on bush#KR1)');
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/summoner?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}`);
+        const data = await res.json();
+
+        const rankDiv = document.getElementById('rank');
+        const masteryDiv = document.getElementById('mastery');
+        masteryDiv.innerHTML = '';
+        document.getElementById('kr-warning').style.display = 'none';
+
+        if (data.error) {
+          rankDiv.textContent = `오류: ${data.error}`;
+          return;
+        }
+
+        if (data.rank) {
+        rankDiv.textContent = `솔로랭크: ${data.rank.tier} ${data.rank.rank} (${data.rank.leaguePoints} LP)`;
+        } else {
+        rankDiv.textContent = '솔로랭크: Unranked';
+        }
+        
+        const maxPoints = data.top3Mastery[0]?.championPoints || 1;
+
+        data.top3Mastery.forEach(champ => {
+          const row = document.createElement('div');
+          row.className = 'champion-row';
+
+          row.innerHTML = `
+            <img src="${champ.image}" alt="${champ.name}" class="champion-img">
+            <div class="bar-container">
+              <div class="bar-fill" style="width: 0%"></div>
+            </div>
+            <div class="points">${champ.championPoints.toLocaleString()} pts</div>
+          `;
+
+          masteryDiv.appendChild(row);
+
+          // Animate bar
+          requestAnimationFrame(() => {
+            const bar = row.querySelector('.bar-fill');
+            const percent = (champ.championPoints / maxPoints) * 100;
+            bar.style.width = percent + '%';
+          });
+        });
+      } catch (err) {
+        console.error(err);
+        alert("데이터를 불러오는 중 오류가 발생했습니다.");
+      }
+    }
+  </script>
+</body>
+</html>
